@@ -51,8 +51,8 @@
                                * MAX(0, MIN((y)+(h),(m)->wy+(m)->wh) - MAX((y),(m)->wy)))
 #define ISVISIBLE(C)            ((C->tags & C->mon->tagset[C->mon->seltags]))
 #define MOUSEMASK               (BUTTONMASK|PointerMotionMask)
-#define WIDTH(X)                ((X)->w + 2 * (X)->bw + gappx)
-#define HEIGHT(X)               ((X)->h + 2 * (X)->bw + gappx)
+#define WIDTH(X)                ((X)->w + 2 * (X)->bw)
+#define HEIGHT(X)               ((X)->h + 2 * (X)->bw)
 #define TAGMASK                 ((1 << LENGTH(tags)) - 1)
 #define TEXTW(X)                (drw_fontset_getwidth(drw, (X)) + lrpad)
 
@@ -1277,54 +1277,20 @@ recttomon(int x, int y, int w, int h)
 void
 resize(Client *c, int x, int y, int w, int h, int interact)
 {
-	XWindowChanges wc;
-
-	applysizehints(c, &x, &y, &w, &h, interact);
-
-	c->oldx = c->x; c->x = wc.x = x;
-	c->oldy = c->y; c->y = wc.y = y;
-	c->oldw = c->w; c->w = wc.width = w;
-	c->oldh = c->h; c->h = wc.height = h;
-	wc.border_width = c->bw;
-	XConfigureWindow(dpy, c->win, CWX|CWY|CWWidth|CWHeight|CWBorderWidth, &wc);
-	configure(c);
-	XSync(dpy, False);
+	if (applysizehints(c, &x, &y, &w, &h, interact))
+		resizeclient(c, x, y, w, h);
 }
 
 void
 resizeclient(Client *c, int x, int y, int w, int h)
 {
 	XWindowChanges wc;
-	unsigned int n;
-	unsigned int gapoffset;
-	unsigned int gapincr;
-	Client *nbc;
 
+	c->oldx = c->x; c->x = wc.x = x;
+	c->oldy = c->y; c->y = wc.y = y;
+	c->oldw = c->w; c->w = wc.width = w;
+	c->oldh = c->h; c->h = wc.height = h;
 	wc.border_width = c->bw;
-
-	/* Get number of clients for the client's monitor */
-	for (n = 0, nbc = nexttiled(c->mon->clients); nbc; nbc = nexttiled(nbc->next), n++);
-
-	/* Do nothing if layout is floating */
-	if (c->isfloating || c->mon->lt[c->mon->sellt]->arrange == NULL) {
-		gapincr = gapoffset = 0;
-	} else {
-		/* Remove border and gap if layout is monocle or only one client */
-		if (c->mon->lt[c->mon->sellt]->arrange == monocle || n == 1) {
-			gapoffset = 0;
-			gapincr = -2 * borderpx;
-			wc.border_width = 0;
-		} else {
-			gapoffset = gappx;
-			gapincr = 2 * gappx;
-		}
-	}
-
-	c->oldx = c->x; c->x = wc.x = x + gapoffset;
-	c->oldy = c->y; c->y = wc.y = y + gapoffset;
-	c->oldw = c->w; c->w = wc.width = w - gapincr;
-	c->oldh = c->h; c->h = wc.height = h - gapincr;
-
 	XConfigureWindow(dpy, c->win, CWX|CWY|CWWidth|CWHeight|CWBorderWidth, &wc);
 	configure(c);
 	XSync(dpy, False);
@@ -1723,33 +1689,25 @@ tile(Monitor *m)
 	unsigned int i, n, h, mw, my, ty;
 	Client *c;
 
-	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->snext), n++);
+	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
 	if (n == 0)
 		return;
 
-	if (n == 1) {
-		/* Single window: 2px gap below bar, no uselessgap */
-		c = nexttiled(m->clients);
-		resize(c, m->wx, m->wy + 4, m->ww, m->wh - 2, 0);
-		return;
-	}
-
-	/* Multiple windows: Apply uselessgap */
 	if (n > m->nmaster)
 		mw = m->nmaster ? m->ww * m->mfact : 0;
 	else
-		mw = m->ww - gappx;
-	for (i = 0, my = ty = gappx, c = nexttiled(m->clients); c; c = nexttiled(c->snext), i++)
+		mw = m->ww;
+	for (i = my = ty = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
 		if (i < m->nmaster) {
-			h = (m->wh - my) / (MIN(n, m->nmaster) - i) - gappx;
-			resize(c, m->wx + gappx, m->wy + my, mw - (2 * gappx), h, 0);
-			if (my + h + gappx < m->wh)
-				my += h + gappx;
+			h = (m->wh - my) / (MIN(n, m->nmaster) - i);
+			resize(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), 0);
+			if (my + HEIGHT(c) < m->wh)
+				my += HEIGHT(c);
 		} else {
-			h = (m->wh - ty) / (n - i) - gappx;
-			resize(c, m->wx + mw + gappx, m->wy + ty, m->ww - mw - (2 * gappx), h, 0);
-			if (ty + h + gappx < m->wh)
-				ty += h + gappx;
+			h = (m->wh - ty) / (n - i);
+			resize(c, m->wx + mw, m->wy + ty, m->ww - mw - (2*c->bw), h - (2*c->bw), 0);
+			if (ty + HEIGHT(c) < m->wh)
+				ty += HEIGHT(c);
 		}
 }
 
@@ -1869,20 +1827,7 @@ updatebars(void)
 	for (m = mons; m; m = m->next) {
 		if (m->barwin)
 			continue;
-		/* Bar width: monitor width minus 5px each side, y=2 for 2px gap */
-		int bar_width = m->mw - 10;
-		int bar_x = m->wx + 5; /* Start 5px from left */
-		int bar_y = m->my + 2; /* 2px gap from monitor top */
-		/* Fix for right monitor (1280x1024 at +3640+150) */
-		if (m->mw == 1280 && m->mh == 1024) {
-			bar_x = 3640 + 5; /* Hardcode x-position from xrandr */
-			bar_y = 150 + 2; /* Adjust for monitor's y-offset */
-			fprintf(stderr, "Fixing right monitor: bar_x=%d, bar_y=%d\n", bar_x, bar_y);
-		}
-		/* Debug: Log monitor and bar geometry */
-		fprintf(stderr, "Monitor %d: x=%d, y=%d, width=%d, height=%d, bar_x=%d, bar_y=%d, bar_width=%d, rotated=%s\n",
-			m->num, m->wx, m->my, m->mw, m->mh, bar_x, bar_y, bar_width, m->mw < m->mh ? "yes" : "no");
-		m->barwin = XCreateWindow(dpy, root, bar_x, bar_y, bar_width, bh, 0, DefaultDepth(dpy, screen),
+		m->barwin = XCreateWindow(dpy, root, m->wx, m->by, m->ww, bh, 0, DefaultDepth(dpy, screen),
 				CopyFromParent, DefaultVisual(dpy, screen),
 				CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
 		XDefineCursor(dpy, m->barwin, cursor[CurNormal]->cursor);
@@ -1894,22 +1839,15 @@ updatebars(void)
 void
 updatebarpos(Monitor *m)
 {
-	m->wy = m->my; /* Start at monitor top */
-	m->wh = m->mh; /* Full monitor height */
+	m->wy = m->my;
+	m->wh = m->mh;
 	if (m->showbar) {
-		if (m->topbar) {
-			m->by = 2; /* Bar at y=2 (2px gap) */
-			m->wy += bh + 2; /* Windows below bar + gap */
-			m->wh -= bh + 2; /* Reduce height by bar + gap */
-		} else {
-			m->by = m->wy + m->wh - bh; /* Bar at bottom */
-			m->wh -= bh; /* Reduce height by bar */
-		}
-	} else {
-		m->by = -bh; /* Hide bar off-screen */
-	}
+		m->wh -= bh;
+		m->by = m->topbar ? m->wy : m->wy + m->wh;
+		m->wy = m->topbar ? m->wy + bh : m->wy;
+	} else
+		m->by = -bh;
 }
-	
 
 void
 updateclientlist(void)
