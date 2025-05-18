@@ -1727,12 +1727,15 @@ tile(Monitor *m)
 	if (n == 0)
 		return;
 
+	int topgap = 6; // Adjust this number to set the desired gap
+	int sidegap = 6; // Adjust this number to set the left and right gap
+	int bottomgap = 6; // Adjust this number to set the bottom gap
 	if (n == 1) {
-		/* Single window: 2px gap below bar, no uselessgap */
-		c = nexttiled(m->clients);
-		resize(c, m->wx, m->wy + 4, m->ww, m->wh - 2, 0);
-		return;
-	}
+    		/* Single window: gaps on all sides, no uselessgap */
+    		c = nexttiled(m->clients);
+   		resize(c, m->wx + sidegap, m->wy + topgap, m->ww - 2 * sidegap, m->wh - topgap - bottomgap, 0);
+    		return;
+	}	
 
 	/* Multiple windows: Apply uselessgap */
 	if (n > m->nmaster)
@@ -1870,12 +1873,12 @@ updatebars(void)
 		if (m->barwin)
 			continue;
 		/* Bar width: monitor width minus 5px each side, y=2 for 2px gap */
-		int bar_width = m->mw - 10;
-		int bar_x = m->wx + 5; /* Start 5px from left */
+		int bar_width = m->mw - 12;
+		int bar_x = m->wx + 6; /* Start 5px from left */
 		int bar_y = m->my + 2; /* 2px gap from monitor top */
 		/* Fix for right monitor (1280x1024 at +3640+150) */
 		if (m->mw == 1280 && m->mh == 1024) {
-			bar_x = 3640 + 5; /* Hardcode x-position from xrandr */
+			bar_x = 3640 + 6; /* Hardcode x-position from xrandr */
 			bar_y = 150 + 2; /* Adjust for monitor's y-offset */
 			fprintf(stderr, "Fixing right monitor: bar_x=%d, bar_y=%d\n", bar_x, bar_y);
 		}
@@ -1899,8 +1902,8 @@ updatebarpos(Monitor *m)
 	if (m->showbar) {
 		if (m->topbar) {
 			m->by = 2; /* Bar at y=2 (2px gap) */
-			m->wy += bh + 2; /* Windows below bar + gap */
-			m->wh -= bh + 2; /* Reduce height by bar + gap */
+			m->wy += bh + 4; /* Windows below bar + gap */
+			m->wh -= bh + 4; /* Reduce height by bar + gap */
 		} else {
 			m->by = m->wy + m->wh - bh; /* Bar at bottom */
 			m->wh -= bh; /* Reduce height by bar */
